@@ -2,27 +2,38 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 优化移动端视口设置，防止缩放，适配刘海屏 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Neon Space Strike 3D</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body {
+        /* 修复移动端高度计算和底部白边问题 */
+        html, body {
+            width: 100%;
+            height: 100%;
             margin: 0;
+            padding: 0;
             overflow: hidden;
-            background-color: #050510;
+            background-color: #050510; /* 强制背景为深色 */
             font-family: 'Courier New', Courier, monospace;
-            touch-action: none;
-            user-select: none;
+            touch-action: none; /* 禁用默认触摸动作 */
+            user-select: none; /* 禁用文本选中 */
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            overscroll-behavior: none; /* 禁用移动端下拉刷新 */
         }
+        
         #game-canvas {
+            display: block;
             position: absolute;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             z-index: 1;
         }
+
         #ui-layer {
             position: absolute;
             top: 0;
@@ -40,21 +51,11 @@
         /* Neon text effects */
         .neon-text {
             color: #fff;
-            text-shadow:
-                0 0 5px #fff,
-                0 0 10px #fff,
-                0 0 20px #0ff,
-                0 0 40px #0ff,
-                0 0 80px #0ff;
+            text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #0ff, 0 0 40px #0ff, 0 0 80px #0ff;
         }
         .neon-text-red {
             color: #fff;
-            text-shadow:
-                0 0 5px #fff,
-                0 0 10px #fff,
-                0 0 20px #f00,
-                0 0 40px #f00,
-                0 0 80px #f00;
+            text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #f00, 0 0 40px #f00, 0 0 80px #f00;
         }
         .btn-neon {
             background: transparent;
@@ -157,41 +158,43 @@
         </div>
 
         <!-- Start Screen -->
-        <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center screen-overlay pointer-events-auto">
-            <h1 class="text-5xl md:text-7xl font-black neon-text mb-2 tracking-tighter">NEON STRIKE</h1>
-            <p class="text-cyan-200 tracking-widest mb-12 text-sm md:text-base">CYBER SPACE SHOOTER 3D</p>
+        <!-- 优化了移动端的 padding 和 margin，防止元素被挤出屏幕 -->
+        <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center screen-overlay pointer-events-auto p-4">
+            <h1 class="text-4xl md:text-7xl font-black neon-text mb-2 tracking-tighter text-center">NEON STRIKE</h1>
+            <p class="text-cyan-200 tracking-widest mb-6 md:mb-12 text-xs md:text-base text-center">CYBER SPACE SHOOTER 3D</p>
             
-            <div class="text-gray-400 text-xs md:text-sm mb-8 text-center max-w-md bg-gray-900 bg-opacity-50 p-4 border border-gray-800 rounded">
+            <div class="text-gray-400 text-xs md:text-sm mb-6 md:mb-8 text-center w-full max-w-sm bg-gray-900 bg-opacity-50 p-3 md:p-4 border border-gray-800 rounded">
                 <p class="mb-2 text-cyan-400 font-bold">操作说明</p>
                 <p>PC: 鼠标拖拽移动战机</p>
                 <p>Mobile: 触摸滑动控制</p>
                 <p class="mt-2 text-yellow-500 text-xs">获取能量块升级武器！不同颜色有不同弹药特效。</p>
             </div>
 
-            <div class="flex flex-col md:flex-row flex-wrap justify-center gap-4">
-                <button id="btn-easy" class="px-6 py-2 text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-easy">
+            <!-- 响应式按钮容器：在移动端呈现 2x2 网格，在电脑端横向排列 -->
+            <div class="w-full max-w-sm grid grid-cols-2 gap-3 md:flex md:max-w-none md:flex-row md:justify-center md:gap-4">
+                <button id="btn-easy" class="py-2 px-1 md:px-6 text-sm md:text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-easy">
                     简单模式
                 </button>
-                <button id="btn-normal" class="px-6 py-2 text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-normal">
+                <button id="btn-normal" class="py-2 px-1 md:px-6 text-sm md:text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-normal">
                     普通模式
                 </button>
-                <button id="btn-hard" class="px-6 py-2 text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-hard">
+                <button id="btn-hard" class="py-2 px-1 md:px-6 text-sm md:text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-hard">
                     困难模式
                 </button>
-                <button id="btn-god" class="px-6 py-2 text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-god">
+                <button id="btn-god" class="py-2 px-1 md:px-6 text-sm md:text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-god">
                     无敌模式
                 </button>
             </div>
         </div>
 
         <!-- Game Over Screen -->
-        <div id="game-over-screen" class="absolute inset-0 flex flex-col items-center justify-center screen-overlay hidden pointer-events-auto">
-            <h1 class="text-6xl font-black neon-text-red mb-4 tracking-tighter">SYSTEM FAILURE</h1>
+        <div id="game-over-screen" class="absolute inset-0 flex flex-col items-center justify-center screen-overlay hidden pointer-events-auto p-4">
+            <h1 class="text-5xl md:text-6xl font-black neon-text-red mb-4 tracking-tighter text-center">SYSTEM FAILURE</h1>
             <div class="text-center mb-8">
-                <p class="text-cyan-400 tracking-widest text-lg mb-1">FINAL SCORE</p>
-                <p id="final-score" class="text-5xl font-black text-white">0</p>
+                <p class="text-cyan-400 tracking-widest text-base md:text-lg mb-1">FINAL SCORE</p>
+                <p id="final-score" class="text-4xl md:text-5xl font-black text-white">0</p>
             </div>
-            <button id="restart-btn" class="btn-neon px-8 py-3 text-xl font-bold rounded cursor-pointer uppercase tracking-widest">
+            <button id="restart-btn" class="btn-neon px-6 py-2 md:px-8 md:py-3 text-lg md:text-xl font-bold rounded cursor-pointer uppercase tracking-widest">
                 Reboot System
             </button>
         </div>
@@ -405,6 +408,7 @@ function init() {
 
     // Event Listeners
     window.addEventListener('resize', onWindowResize);
+    window.addEventListener('orientationchange', () => setTimeout(onWindowResize, 100)); // 针对手机旋转进行修正
     
     // Controls
     const handlePointerMove = (e) => {
@@ -578,6 +582,8 @@ function startGame(difficultyIndex) {
     uiGameOverScreen.classList.add('hidden');
     uiHud.classList.remove('hidden');
     
+    // 强制调用一次调整尺寸以适应全屏
+    onWindowResize();
     resetGameParams();
     currentState = GAME_STATE.PLAYING;
 }
