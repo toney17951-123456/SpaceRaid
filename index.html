@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Space Strike 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050510;
+            font-family: 'Courier New', Courier, monospace;
+            touch-action: none;
+            user-select: none;
+        }
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .pointer-events-auto { pointer-events: auto; }
+        
+        /* Neon text effects */
+        .neon-text {
+            color: #fff;
+            text-shadow:
+                0 0 5px #fff,
+                0 0 10px #fff,
+                0 0 20px #0ff,
+                0 0 40px #0ff,
+                0 0 80px #0ff;
+        }
+        .neon-text-red {
+            color: #fff;
+            text-shadow:
+                0 0 5px #fff,
+                0 0 10px #fff,
+                0 0 20px #f00,
+                0 0 40px #f00,
+                0 0 80px #f00;
+        }
+        .btn-neon {
+            background: transparent;
+            border: 2px solid #0ff;
+            color: #0ff;
+            box-shadow: 0 0 10px #0ff, inset 0 0 10px #0ff;
+            transition: all 0.3s ease;
+        }
+        .btn-neon:hover {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 20px #0ff, inset 0 0 20px #0ff;
+        }
+
+        /* Difficulty Buttons */
+        .btn-easy { border-color: #0f0; color: #0f0; box-shadow: 0 0 10px #0f0, inset 0 0 10px #0f0; }
+        .btn-easy:hover { background: #0f0; color: #000; box-shadow: 0 0 20px #0f0, inset 0 0 20px #0f0; }
+        
+        .btn-normal { border-color: #0ff; color: #0ff; box-shadow: 0 0 10px #0ff, inset 0 0 10px #0ff; }
+        .btn-normal:hover { background: #0ff; color: #000; box-shadow: 0 0 20px #0ff, inset 0 0 20px #0ff; }
+        
+        .btn-hard { border-color: #f00; color: #f00; box-shadow: 0 0 10px #f00, inset 0 0 10px #f00; }
+        .btn-hard:hover { background: #f00; color: #000; box-shadow: 0 0 20px #f00, inset 0 0 20px #f00; }
+        
+        /* God Mode Button */
+        .btn-god { border-color: #ffd700; color: #ffd700; box-shadow: 0 0 10px #ffd700, inset 0 0 10px #ffd700; }
+        .btn-god:hover { background: #ffd700; color: #000; box-shadow: 0 0 20px #ffd700, inset 0 0 20px #ffd700; }
+        
+        /* Health bar */
+        .health-pip {
+            width: 20px;
+            height: 10px;
+            background-color: #0f0;
+            box-shadow: 0 0 10px #0f0;
+            margin-right: 5px;
+            transform: skewX(-20deg);
+            transition: all 0.2s;
+        }
+        .health-pip.empty {
+            background-color: transparent;
+            border: 1px solid #0f0;
+            box-shadow: none;
+            opacity: 0.3;
+        }
+        .health-pip.danger {
+            background-color: #f00;
+            box-shadow: 0 0 10px #f00;
+            border-color: #f00;
+        }
+
+        /* Overlay backgrounds */
+        .screen-overlay {
+            background: rgba(5, 5, 16, 0.85);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Powerup Floating Labels */
+        .powerup-label {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            text-shadow: 0 0 5px #000, 0 0 10px currentColor;
+            pointer-events: none;
+            z-index: 5;
+            transition: opacity 0.2s;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- UI Layer -->
+    <div id="ui-layer">
+        
+        <!-- Powerup Labels Layer -->
+        <div id="labels-layer" class="absolute inset-0 pointer-events-none"></div>
+
+        <!-- HUD (Heads Up Display) -->
+        <div id="hud" class="w-full p-4 flex justify-between items-start hidden">
+            <div class="flex flex-col">
+                <span class="text-cyan-400 text-sm font-bold tracking-widest mb-1">SHIELD</span>
+                <div id="health-container" class="flex">
+                    <div class="health-pip"></div>
+                    <div class="health-pip"></div>
+                    <div class="health-pip"></div>
+                    <div class="health-pip"></div>
+                    <div class="health-pip"></div>
+                </div>
+                <div id="weapon-level-ui" class="text-blue-400 text-xs mt-2 opacity-0 transition-opacity">武器升级！</div>
+                <span id="weapon-type-display" class="text-yellow-400 text-xs font-bold mt-1 tracking-widest hidden">武器: 散射机炮</span>
+            </div>
+            <div class="flex flex-col items-end">
+                <span class="text-cyan-400 text-sm font-bold tracking-widest mb-1">SCORE</span>
+                <span id="score-display" class="neon-text text-3xl font-black">0</span>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center screen-overlay pointer-events-auto">
+            <h1 class="text-5xl md:text-7xl font-black neon-text mb-2 tracking-tighter">NEON STRIKE</h1>
+            <p class="text-cyan-200 tracking-widest mb-12 text-sm md:text-base">CYBER SPACE SHOOTER 3D</p>
+            
+            <div class="text-gray-400 text-xs md:text-sm mb-8 text-center max-w-md bg-gray-900 bg-opacity-50 p-4 border border-gray-800 rounded">
+                <p class="mb-2 text-cyan-400 font-bold">操作说明</p>
+                <p>PC: 鼠标拖拽移动战机</p>
+                <p>Mobile: 触摸滑动控制</p>
+                <p class="mt-2 text-yellow-500 text-xs">获取能量块升级武器！不同颜色有不同弹药特效。</p>
+            </div>
+
+            <div class="flex flex-col md:flex-row flex-wrap justify-center gap-4">
+                <button id="btn-easy" class="px-6 py-2 text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-easy">
+                    简单模式
+                </button>
+                <button id="btn-normal" class="px-6 py-2 text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-normal">
+                    普通模式
+                </button>
+                <button id="btn-hard" class="px-6 py-2 text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-hard">
+                    困难模式
+                </button>
+                <button id="btn-god" class="px-6 py-2 text-lg font-bold rounded cursor-pointer uppercase tracking-widest transition-all bg-transparent btn-god">
+                    无敌模式
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="absolute inset-0 flex flex-col items-center justify-center screen-overlay hidden pointer-events-auto">
+            <h1 class="text-6xl font-black neon-text-red mb-4 tracking-tighter">SYSTEM FAILURE</h1>
+            <div class="text-center mb-8">
+                <p class="text-cyan-400 tracking-widest text-lg mb-1">FINAL SCORE</p>
+                <p id="final-score" class="text-5xl font-black text-white">0</p>
+            </div>
+            <button id="restart-btn" class="btn-neon px-8 py-3 text-xl font-bold rounded cursor-pointer uppercase tracking-widest">
+                Reboot System
+            </button>
+        </div>
+
+    </div>
+
+<script>
+/**
+ * AUDIO SYNTHESIZER
+ * Procedural retro sound effects using Web Audio API
+ */
+const AudioSys = (function() {
+    let ctx = null;
+    
+    function init() {
+        if (!ctx) {
+            window.AudioContext = window.AudioContext || window.webkitAudioContext;
+            ctx = new AudioContext();
+        }
+        if (ctx.state === 'suspended') ctx.resume();
+    }
+
+    function playTone(freq, type, duration, vol, slideFreq = null) {
+        if (!ctx) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        if (slideFreq) {
+            osc.frequency.exponentialRampToValueAtTime(slideFreq, ctx.currentTime + duration);
+        }
+        
+        gain.gain.setValueAtTime(vol, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+        
+        osc.start();
+        osc.stop(ctx.currentTime + duration);
+    }
+
+    function playNoise(duration, vol) {
+        if (!ctx) return;
+        const bufferSize = ctx.sampleRate * duration;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+        
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        
+        // Lowpass filter for explosion sound
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1000, ctx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + duration);
+        
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(vol, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+        
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        
+        noise.start();
+    }
+
+    return {
+        init: init,
+        shoot: () => playTone(800, 'square', 0.1, 0.05, 200),
+        enemyShoot: () => playTone(600, 'sawtooth', 0.15, 0.05, 100),
+        explosion: () => playNoise(0.5, 0.3),
+        hit: () => playTone(150, 'sawtooth', 0.2, 0.1, 50),
+        powerup: () => {
+            playTone(400, 'sine', 0.1, 0.1);
+            setTimeout(() => playTone(600, 'sine', 0.1, 0.1), 100);
+            setTimeout(() => playTone(800, 'sine', 0.2, 0.1), 200);
+        }
+    };
+})();
+
+/**
+ * GAME ENGINE & LOGIC
+ */
+const GAME_STATE = { START: 0, PLAYING: 1, GAMEOVER: 2 };
+let currentState = GAME_STATE.START;
+
+// Three.js Core
+let scene, camera, renderer;
+let gameTime = 0;
+let lastFrameTime = performance.now();
+
+// Game Objects
+let player;
+const playerBoundX = 25;
+const playerBoundZMin = -15;
+const playerBoundZMax = 10;
+let targetPos = new THREE.Vector3(0, 0, 0);
+
+const bullets = [];
+const enemies = [];
+const particles = [];
+const powerups = [];
+const backgroundElements = [];
+
+// Game Stats
+let score = 0;
+let health = 5;
+let weaponLevel = 1;
+let activeWeapon = 'spread'; // 'spread', 'laser', 'missile'
+let hasShield = false;
+let invulnTimer = 0;
+let currentDifficulty = 1; // 0: Easy, 1: Normal, 2: Hard, 3: God
+const maxHealth = 5;
+
+// Configs
+let enemySpawnTimer = 0;
+let enemySpawnInterval = 100; // frames
+let frameCount = 0;
+let lastShootTime = 0;
+const fireRate = 150; // ms
+
+// Camera Shake
+let shakeIntensity = 0;
+
+// UI Elements
+const uiHud = document.getElementById('hud');
+const uiStartScreen = document.getElementById('start-screen');
+const uiGameOverScreen = document.getElementById('game-over-screen');
+const scoreDisplay = document.getElementById('score-display');
+const finalScoreDisplay = document.getElementById('final-score');
+const healthContainer = document.getElementById('health-container');
+const weaponLevelUi = document.getElementById('weapon-level-ui');
+const weaponTypeDisplay = document.getElementById('weapon-type-display');
+const labelsLayer = document.getElementById('labels-layer'); // New labels layer
+
+// Reusable Materials & Geometries
+const matCache = {
+    player: new THREE.MeshPhongMaterial({ color: 0xddddf0, shininess: 120, flatShading: true }),
+    playerDark: new THREE.MeshPhongMaterial({ color: 0x333344, shininess: 80 }),
+    playerGlow: new THREE.MeshBasicMaterial({ color: 0x00ffff }),
+    laserBlue: new THREE.MeshBasicMaterial({ color: 0x00ffff }),
+    laserRed: new THREE.MeshBasicMaterial({ color: 0xff0055 }),
+    missileYellow: new THREE.MeshBasicMaterial({ color: 0xffff00 }),
+    enemyBasic: new THREE.MeshPhongMaterial({ color: 0xff2222, shininess: 50, flatShading: true }),
+    enemyFast: new THREE.MeshPhongMaterial({ color: 0xffaa00, shininess: 80, flatShading: true }),
+    enemyTank: new THREE.MeshPhongMaterial({ color: 0xaa00ff, shininess: 30, flatShading: true }),
+    enemyShooter: new THREE.MeshPhongMaterial({ color: 0xff00ff, shininess: 60, flatShading: true }),
+    enemyLaser: new THREE.MeshBasicMaterial({ color: 0xff3300 }), 
+    powerup: new THREE.MeshBasicMaterial({ color: 0x0088ff, wireframe: true }),
+    powerupShield: new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true }),
+    powerupLaser: new THREE.MeshBasicMaterial({ color: 0xff0055, wireframe: true }),
+    powerupMissile: new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true }),
+    shield: new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3, wireframe: true }),
+    drone: new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true })
+};
+
+const geoCache = {
+    bullet: new THREE.CylinderGeometry(0.2, 0.2, 2, 8),
+    bulletMissile: new THREE.CylinderGeometry(0.4, 0.4, 2, 8),
+    enemyLaser: new THREE.CylinderGeometry(0.3, 0.3, 1.5, 6),
+    particle: new THREE.BoxGeometry(0.5, 0.5, 0.5),
+    drone: new THREE.TetrahedronGeometry(0.6)
+};
+geoCache.bullet.rotateX(Math.PI / 2);
+geoCache.bulletMissile.rotateX(Math.PI / 2);
+geoCache.enemyLaser.rotateX(Math.PI / 2);
+
+// Create specific shapes for powerups
+geoCache.powerupShield = new THREE.SphereGeometry(1.2, 8, 8);
+geoCache.powerupLaser = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
+geoCache.powerupMissile = new THREE.ConeGeometry(1, 2, 4);
+geoCache.powerupSpread = new THREE.OctahedronGeometry(1);
+
+// Initialize Engine
+function init() {
+    const canvas = document.getElementById('game-canvas');
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x050510, 0.015);
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // Angled top-down view
+    camera.position.set(0, 40, 20);
+    camera.lookAt(0, 0, -10);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404060);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(10, 50, 20);
+    scene.add(dirLight);
+
+    const playerLight = new THREE.PointLight(0x00ffff, 1, 30);
+    playerLight.position.set(0, 5, 0);
+    scene.add(playerLight);
+
+    // Environment Builder
+    createEnvironment();
+
+    // Create Player Ship
+    createPlayer();
+
+    // Event Listeners
+    window.addEventListener('resize', onWindowResize);
+    
+    // Controls
+    const handlePointerMove = (e) => {
+        if (currentState !== GAME_STATE.PLAYING) return;
+        
+        let clientX = e.clientX;
+        let clientY = e.clientY;
+        
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        }
+
+        const vec = new THREE.Vector3();
+        const pos = new THREE.Vector3();
+        
+        vec.set(
+            (clientX / window.innerWidth) * 2 - 1,
+            -(clientY / window.innerHeight) * 2 + 1,
+            0.5
+        );
+        vec.unproject(camera);
+        vec.sub(camera.position).normalize();
+        
+        const distance = -camera.position.y / vec.y;
+        pos.copy(camera.position).add(vec.multiplyScalar(distance));
+        
+        targetPos.x = THREE.MathUtils.clamp(pos.x, -playerBoundX, playerBoundX);
+        targetPos.z = THREE.MathUtils.clamp(pos.z - 5, playerBoundZMin, playerBoundZMax);
+    };
+
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('touchmove', (e) => {
+        handlePointerMove(e);
+        e.preventDefault();
+    }, { passive: false });
+
+    // UI Buttons
+    document.getElementById('btn-easy').addEventListener('click', () => startGame(0));
+    document.getElementById('btn-normal').addEventListener('click', () => startGame(1));
+    document.getElementById('btn-hard').addEventListener('click', () => startGame(2));
+    document.getElementById('btn-god').addEventListener('click', () => startGame(3));
+    document.getElementById('restart-btn').addEventListener('click', () => startGame(currentDifficulty));
+
+    // Start Loop
+    requestAnimationFrame(animate);
+}
+
+function createEnvironment() {
+    const gridHelper = new THREE.GridHelper(200, 50, 0x00ffff, 0x003333);
+    gridHelper.position.y = -5;
+    scene.add(gridHelper);
+    backgroundElements.push({ mesh: gridHelper, type: 'grid' });
+
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 300;
+    const posArray = new Float32Array(starCount * 3);
+    for(let i=0; i < starCount*3; i+=3) {
+        posArray[i] = (Math.random() - 0.5) * 100;
+        posArray[i+1] = (Math.random() - 0.5) * 40 - 10;
+        posArray[i+2] = (Math.random() - 0.5) * 200;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.2, transparent: true, opacity: 0.8 });
+    const stars = new THREE.Points(starGeo, starMat);
+    scene.add(stars);
+    backgroundElements.push({ mesh: stars, type: 'stars' });
+}
+
+function createPlayer() {
+    player = new THREE.Group();
+
+    // Body
+    const bodyGeo = new THREE.CylinderGeometry(0.1, 1.2, 6, 6);
+    bodyGeo.rotateX(-Math.PI / 2);
+    const body = new THREE.Mesh(bodyGeo, matCache.player);
+    player.add(body);
+
+    // Wings
+    const wingGeo = new THREE.BoxGeometry(7, 0.4, 2.5);
+    const wings = new THREE.Mesh(wingGeo, matCache.playerDark);
+    const leftWing = wings.clone();
+    leftWing.rotation.y = Math.PI / 6; leftWing.position.set(-1.8, -0.2, 1);
+    const rightWing = wings.clone();
+    rightWing.rotation.y = -Math.PI / 6; rightWing.position.set(1.8, -0.2, 1);
+    player.add(leftWing, rightWing);
+
+    // Cannons
+    const cannonGeo = new THREE.CylinderGeometry(0.15, 0.15, 2.5, 8);
+    cannonGeo.rotateX(Math.PI / 2);
+    const cannonL = new THREE.Mesh(cannonGeo, matCache.playerDark); cannonL.position.set(-2.5, 0, 0);
+    const cannonR = new THREE.Mesh(cannonGeo, matCache.playerDark); cannonR.position.set(2.5, 0, 0);
+    player.add(cannonL, cannonR);
+
+    // Cockpit
+    const cockpitGeo = new THREE.SphereGeometry(0.5, 16, 16);
+    cockpitGeo.scale(1, 2.4, 1); cockpitGeo.rotateX(Math.PI / 2);
+    const cockpit = new THREE.Mesh(cockpitGeo, matCache.playerGlow);
+    cockpit.position.set(0, 0.6, -0.5);
+    player.add(cockpit);
+
+    // Engines
+    const engineGeo = new THREE.ConeGeometry(0.5, 2, 8);
+    engineGeo.rotateX(Math.PI / 2);
+    const engineMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+    const eng1 = new THREE.Mesh(engineGeo, engineMat); eng1.position.set(-0.6, 0, 3);
+    const eng2 = new THREE.Mesh(engineGeo, engineMat); eng2.position.set(0.6, 0, 3);
+    player.add(eng1, eng2);
+
+    // Shield
+    const shieldGeo = new THREE.SphereGeometry(4, 16, 16);
+    player.shieldMesh = new THREE.Mesh(shieldGeo, matCache.shield);
+    player.shieldMesh.visible = false;
+    player.add(player.shieldMesh);
+
+    // Drones
+    player.droneGroup = new THREE.Group();
+    player.drone1 = new THREE.Mesh(geoCache.drone, matCache.drone); player.drone1.position.set(4, 0, 0); player.drone1.visible = false;
+    player.droneGroup.add(player.drone1);
+    player.drone2 = new THREE.Mesh(geoCache.drone, matCache.drone); player.drone2.position.set(-4, 0, 0); player.drone2.visible = false;
+    player.droneGroup.add(player.drone2);
+    player.add(player.droneGroup);
+
+    scene.add(player);
+}
+
+function resetGameParams() {
+    score = 0;
+    health = maxHealth;
+    weaponLevel = 1;
+    activeWeapon = 'spread';
+    hasShield = false;
+    invulnTimer = 0;
+    gameTime = 0;
+    
+    // Set parameters based on difficulty
+    if (currentDifficulty === 0) {
+        enemySpawnInterval = 80; // 简单：生成极慢
+    } else if (currentDifficulty === 1 || currentDifficulty === 3) {
+        enemySpawnInterval = 60; // 普通和无敌：老简单标准的适中速度
+    } else if (currentDifficulty === 2) {
+        enemySpawnInterval = 45; // 困难：生成较快，但不至于铺天盖地
+    }
+    
+    targetPos.set(0, 0, 0);
+    if (player) {
+        player.position.set(0, 0, 0);
+        player.rotation.set(0, 0, 0);
+        player.visible = true;
+        if (player.shieldMesh) player.shieldMesh.visible = false;
+        if (player.drone1) player.drone1.visible = false;
+        if (player.drone2) player.drone2.visible = false;
+    }
+    
+    // Clear entities
+    bullets.forEach(b => { scene.remove(b.mesh); }); bullets.length = 0;
+    enemies.forEach(e => { scene.remove(e.mesh); }); enemies.length = 0;
+    particles.forEach(p => { scene.remove(p.mesh); }); particles.length = 0;
+    powerups.forEach(p => { 
+        scene.remove(p.mesh); 
+        if (p.label) p.label.remove(); 
+    }); powerups.length = 0;
+
+    updateUI();
+}
+
+function startGame(difficultyIndex) {
+    currentDifficulty = difficultyIndex;
+    AudioSys.init();
+    uiStartScreen.classList.add('hidden');
+    uiGameOverScreen.classList.add('hidden');
+    uiHud.classList.remove('hidden');
+    
+    resetGameParams();
+    currentState = GAME_STATE.PLAYING;
+}
+
+function gameOver() {
+    currentState = GAME_STATE.GAMEOVER;
+    uiHud.classList.add('hidden');
+    uiGameOverScreen.classList.remove('hidden');
+    finalScoreDisplay.innerText = score;
+    createExplosion(player.position, 0x00ffff, 50, 2);
+    player.visible = false;
+    shakeCamera(1.5);
+}
+
+function damagePlayer(sourcePos, enemySize) {
+    if (invulnTimer > 0) return;
+
+    if (hasShield) {
+        hasShield = false;
+        player.shieldMesh.visible = false;
+        invulnTimer = 60;
+        AudioSys.explosion();
+        createExplosion(player.position, 0x00ffff, 30, 2);
+        updateUI();
+        shakeCamera(1.5);
+        return;
+    }
+
+    AudioSys.hit();
+    health--;
+    invulnTimer = 60;
+    updateUI();
+    shakeCamera(0.8);
+    createExplosion(sourcePos, 0xff0000, 20, enemySize);
+    
+    if (weaponLevel > 1) weaponLevel--;
+    else activeWeapon = 'spread';
+
+    if (player.drone1) player.drone1.visible = (weaponLevel >= 4);
+    if (player.drone2) player.drone2.visible = (weaponLevel >= 5);
+
+    if (health <= 0) {
+        gameOver();
+    }
+}
+
+function shootBullet() {
+    const now = performance.now();
+    let currentFireRate = fireRate;
+    if (activeWeapon === 'laser') currentFireRate = 250;
+    if (activeWeapon === 'missile') currentFireRate = 350;
+
+    if (now - lastShootTime < currentFireRate) return;
+    lastShootTime = now;
+    AudioSys.shoot();
+
+    const createShot = (offsetX, offsetZ, angle, typeStr = 'spread', customOrigin = null) => {
+        let mat = matCache.laserBlue;
+        let speed = 1.5;
+        let piercing = false;
+        let isMissile = false;
+        let damage = 1;
+        let geo = geoCache.bullet;
+
+        if (typeStr === 'laser') {
+            mat = matCache.laserRed; speed = 2.5; piercing = true; damage = 2;
+        } else if (typeStr === 'missile') {
+            mat = matCache.missileYellow; speed = 0.8; isMissile = true; damage = 3; geo = geoCache.bulletMissile;
+        }
+
+        const mesh = new THREE.Mesh(geo, mat);
+        if (customOrigin) {
+            mesh.position.copy(customOrigin); mesh.rotation.y = angle;
+        } else {
+            mesh.position.copy(player.position); mesh.position.x += offsetX; mesh.position.z += offsetZ; mesh.rotation.y = angle;
+        }
+        scene.add(mesh);
+        bullets.push({ mesh: mesh, isPlayer: true, velocity: new THREE.Vector3(Math.sin(angle) * speed, 0, -Math.cos(angle) * speed), damage: damage, piercing: piercing, isMissile: isMissile, hitEnemies: [] });
+    };
+
+    if (activeWeapon === 'laser') {
+        if (weaponLevel === 1) createShot(0, -2, 0, 'laser');
+        else if (weaponLevel === 2) { createShot(-1, -1, 0, 'laser'); createShot(1, -1, 0, 'laser'); }
+        else if (weaponLevel === 3) { createShot(0, -2, 0, 'laser'); createShot(-1.5, -1, 0, 'laser'); createShot(1.5, -1, 0, 'laser'); }
+        else if (weaponLevel === 4) { createShot(-0.8, -2, 0, 'laser'); createShot(0.8, -2, 0, 'laser'); createShot(-2, -1, -0.1, 'laser'); createShot(2, -1, 0.1, 'laser'); }
+        else { createShot(0, -2, 0, 'laser'); createShot(-1.2, -1.5, 0, 'laser'); createShot(1.2, -1.5, 0, 'laser'); createShot(-2.5, -1, -0.15, 'laser'); createShot(2.5, -1, 0.15, 'laser'); }
+    } else if (activeWeapon === 'missile') {
+        if (weaponLevel === 1) createShot(0, -2, 0, 'missile');
+        else if (weaponLevel === 2) { createShot(-1, -1, -0.2, 'missile'); createShot(1, -1, 0.2, 'missile'); }
+        else if (weaponLevel === 3) { createShot(0, -2, 0, 'missile'); createShot(-1.5, -1, -0.4, 'missile'); createShot(1.5, -1, 0.4, 'missile'); }
+        else if (weaponLevel === 4) { createShot(-1, -2, -0.1, 'missile'); createShot(1, -2, 0.1, 'missile'); createShot(-2, -1, -0.5, 'missile'); createShot(2, -1, 0.5, 'missile'); }
+        else { createShot(0, -2, 0, 'missile'); createShot(-1.5, -1.5, -0.3, 'missile'); createShot(1.5, -1.5, 0.3, 'missile'); createShot(-2.5, -1, -0.6, 'missile'); createShot(2.5, -1, 0.6, 'missile'); }
+    } else {
+        if (weaponLevel === 1) { createShot(0, -2, 0); } 
+        else if (weaponLevel === 2) { createShot(-0.8, -1, 0); createShot(0.8, -1, 0); } 
+        else if (weaponLevel === 3) { createShot(0, -2, 0); createShot(-1, -1, -0.15); createShot(1, -1, 0.15); }
+        else if (weaponLevel === 4) { createShot(-0.5, -2, -0.05); createShot(0.5, -2, 0.05); createShot(-1.5, -1, -0.2); createShot(1.5, -1, 0.2); }
+        else { createShot(0, -2, 0); createShot(-1, -1.5, -0.1); createShot(1, -1.5, 0.1); createShot(-2, -1, -0.25); createShot(2, -1, 0.25); }
+    }
+
+    if (weaponLevel >= 4 && player.drone1 && player.drone1.visible) {
+        const dronePos = new THREE.Vector3(); player.drone1.getWorldPosition(dronePos); createShot(0, 0, 0, activeWeapon, dronePos);
+    }
+    if (weaponLevel >= 5 && player.drone2 && player.drone2.visible) {
+        const dronePos = new THREE.Vector3(); player.drone2.getWorldPosition(dronePos); createShot(0, 0, 0, activeWeapon, dronePos);
+    }
+}
+
+function shootEnemyBullet(enemy) {
+    AudioSys.enemyShoot();
+    const dir = new THREE.Vector3().subVectors(player.position, enemy.mesh.position).normalize();
+    const speed = 1.0;
+    const velocity = dir.multiplyScalar(speed);
+    const mesh = new THREE.Mesh(geoCache.enemyLaser, matCache.enemyLaser);
+    mesh.position.copy(enemy.mesh.position);
+    mesh.position.z += 1.5;
+    const targetLook = mesh.position.clone().add(velocity);
+    mesh.lookAt(targetLook);
+    scene.add(mesh);
+    bullets.push({ mesh: mesh, isPlayer: false, velocity: velocity, damage: 1, piercing: false, isMissile: false });
+}
+
+function spawnEnemy() {
+    let speedMult = 1;
+    if (currentDifficulty === 0) {
+        speedMult = 0.6 + (gameTime / 150) * 0.2; // 极慢节奏
+    } else if (currentDifficulty === 1 || currentDifficulty === 3) {
+        speedMult = 0.7 + (gameTime / 120) * 0.3; // 普通节奏
+    } else {
+        speedMult = 1 + (gameTime / 60) * 0.4; // 困难：适度加快
+    }
+    
+    const isHighLevel = weaponLevel >= 4;
+    const rand = Math.random();
+    let type = 'basic';
+    let hp = 2;
+    let speed = 0.3 * speedMult;
+    let mat = matCache.enemyBasic;
+    let geo;
+    let size = 1.5;
+    let scoreVal = 100;
+    let lastShotTime = 0;
+    let customMesh = null;
+
+    // 简单模式下完全禁用射击型小飞机
+    let canSpawnShooter = currentDifficulty !== 0;
+    let shooterThreshold = isHighLevel ? 0.6 : 0.85;
+    let shooterTime = 15;
+    
+    // 困难模式下稍微增加射击型小飞机的概率，但绝不铺天盖地
+    if (currentDifficulty === 2) {
+        shooterThreshold = isHighLevel ? 0.4 : 0.7;
+        shooterTime = 10;
+    }
+
+    if (canSpawnShooter && rand > shooterThreshold && gameTime > shooterTime) {
+        type = 'shooter';
+        hp = 3;
+        speed = 0.15 * speedMult;
+        mat = matCache.enemyShooter;
+        scoreVal = 300;
+        lastShotTime = gameTime;
+        
+        customMesh = new THREE.Group();
+        const bodyGeo = new THREE.CylinderGeometry(0.2, 0.8, 3, 6); bodyGeo.rotateX(Math.PI / 2);
+        const body = new THREE.Mesh(bodyGeo, mat); customMesh.add(body);
+        
+        const wingGeo = new THREE.BoxGeometry(4, 0.3, 1.2);
+        const wing = new THREE.Mesh(wingGeo, mat); wing.position.set(0, 0, 0.5); customMesh.add(wing);
+
+        const gunGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.5, 8); gunGeo.rotateX(Math.PI / 2);
+        const gun = new THREE.Mesh(gunGeo, matCache.enemyLaser); gun.position.set(0, -0.2, -1.5);
+        customMesh.add(gun);
+
+        customMesh.material = mat;
+        customMesh.isGroup = true;
+    } else if (rand > (isHighLevel ? 0.4 : 0.7) && gameTime > 10) {
+        type = 'fast'; hp = 1; speed = 0.6 * speedMult; mat = matCache.enemyFast;
+        geo = new THREE.ConeGeometry(0.8, 3, 4); geo.rotateX(Math.PI / 2); scoreVal = 200;
+    } else if (rand > (isHighLevel ? 0.3 : 0.6) && gameTime > 20) {
+        type = 'tank'; hp = 8;
+        if (isHighLevel && currentDifficulty > 0) hp = 15;
+        speed = 0.15 * speedMult; mat = matCache.enemyTank;
+        geo = new THREE.BoxGeometry(3, 1.5, 3); size = 3; scoreVal = 500;
+    } else {
+        geo = new THREE.TetrahedronGeometry(1.5);
+        if (isHighLevel && currentDifficulty > 0) hp = 4;
+    }
+
+    const mesh = customMesh ? customMesh : new THREE.Mesh(geo, mat);
+    mesh.position.set((Math.random() - 0.5) * (playerBoundX * 2 - 4), 0, -50);
+    
+    if (type === 'shooter') {
+        mesh.rotation.y = Math.PI;
+    } else {
+        mesh.rotation.x = Math.random() * Math.PI;
+        mesh.rotation.y = Math.random() * Math.PI;
+    }
+
+    scene.add(mesh);
+    enemies.push({ mesh, type, hp, speed, size, score: scoreVal, lastShotTime: lastShotTime });
+}
+
+function spawnPowerup(pos) {
+    const rand = Math.random();
+    let type = 'spread';
+    if (rand > 0.85) type = 'shield';
+    else if (rand > 0.65) type = 'laser';
+    else if (rand > 0.45) type = 'missile';
+
+    let mat = matCache.powerup;
+    let geo = geoCache.powerupSpread;
+    let labelText = '散射机炮';
+    let labelColor = '#0088ff';
+
+    if (type === 'shield') { mat = matCache.powerupShield; geo = geoCache.powerupShield; labelText = '能量护盾'; labelColor = '#00ff00'; } 
+    else if (type === 'laser') { mat = matCache.powerupLaser; geo = geoCache.powerupLaser; labelText = '穿透激光'; labelColor = '#ff0055'; } 
+    else if (type === 'missile') { mat = matCache.powerupMissile; geo = geoCache.powerupMissile; labelText = '追踪导弹'; labelColor = '#ffff00'; }
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    scene.add(mesh);
+
+    const label = document.createElement('div');
+    label.className = 'powerup-label';
+    label.innerText = labelText;
+    label.style.color = labelColor;
+    labelsLayer.appendChild(label);
+
+    powerups.push({ mesh, speed: 0.2, type: type, label: label });
+}
+
+function createTrailParticle(pos, color) {
+    const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, blending: THREE.AdditiveBlending });
+    const mesh = new THREE.Mesh(geoCache.particle, mat);
+    mesh.position.copy(pos); mesh.position.z += 1.5; mesh.scale.setScalar(0.6);
+    scene.add(mesh);
+    particles.push({ mesh, velocity: new THREE.Vector3((Math.random() - 0.5)*0.1, 0, 0.2), life: 0.5, decay: 0.05 });
+}
+
+function createExplosion(pos, color, count = 15, scale = 1) {
+    AudioSys.explosion();
+    for (let i = 0; i < count; i++) {
+        const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, blending: THREE.AdditiveBlending });
+        const mesh = new THREE.Mesh(geoCache.particle, mat);
+        mesh.position.copy(pos);
+        
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(Math.random() * 2 - 1);
+        const speed = Math.random() * 0.5 * scale;
+        
+        const vx = Math.sin(phi) * Math.cos(theta) * speed;
+        const vy = Math.sin(phi) * Math.sin(theta) * speed;
+        const vz = Math.cos(phi) * speed;
+
+        mesh.scale.setScalar(scale * (Math.random() * 0.5 + 0.5));
+        scene.add(mesh);
+        particles.push({ mesh, velocity: new THREE.Vector3(vx, vy, vz), life: 1.0, decay: Math.random() * 0.02 + 0.02 });
+    }
+}
+
+function shakeCamera(amount) {
+    shakeIntensity = amount;
+}
+
+function updateUI() {
+    scoreDisplay.innerText = score;
+    const pips = healthContainer.children;
+    for (let i = 0; i < pips.length; i++) {
+        pips[i].className = 'health-pip';
+        if (currentDifficulty === 3) {
+            pips[i].style.backgroundColor = '#ffd700'; pips[i].style.boxShadow = '0 0 10px #ffd700'; pips[i].style.borderColor = 'transparent'; pips[i].style.opacity = '1';
+        } else {
+            pips[i].style = '';
+            if (i >= health) pips[i].classList.add('empty');
+            if (health <= 2 && i < health) pips[i].classList.add('danger');
+        }
+    }
+
+    if (activeWeapon !== 'spread' || weaponLevel > 1 || hasShield || currentDifficulty === 3) {
+        weaponTypeDisplay.classList.remove('hidden');
+        let weaponName = '散射机炮';
+        if (activeWeapon === 'laser') weaponName = '穿透激光';
+        else if (activeWeapon === 'missile') weaponName = '追踪导弹';
+
+        let txt = `武器: ${weaponName} LV.${weaponLevel}`;
+        if (hasShield || currentDifficulty === 3) txt += ` | 护盾开启`;
+        weaponTypeDisplay.innerText = txt;
+        
+        weaponTypeDisplay.className = 'text-xs font-bold mt-1 tracking-widest ';
+        if (currentDifficulty === 3) weaponTypeDisplay.classList.add('text-yellow-500');
+        else if (hasShield) weaponTypeDisplay.classList.add('text-green-400');
+        else if (activeWeapon === 'laser') weaponTypeDisplay.classList.add('text-pink-500');
+        else if (activeWeapon === 'missile') weaponTypeDisplay.classList.add('text-yellow-400');
+        else weaponTypeDisplay.classList.add('text-cyan-400');
+    } else {
+        weaponTypeDisplay.classList.add('hidden');
+    }
+}
+
+function showUpgradeText(text = "武器升级！") {
+    weaponLevelUi.innerText = text;
+    weaponLevelUi.style.opacity = 1;
+    setTimeout(() => { weaponLevelUi.style.opacity = 0; }, 2000);
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function removeEntity(array, index, sceneObj) {
+    if (sceneObj) {
+        if (sceneObj.mesh) scene.remove(sceneObj.mesh);
+        if (sceneObj.label && sceneObj.label.parentNode) sceneObj.label.parentNode.removeChild(sceneObj.label);
+    }
+    array.splice(index, 1);
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const time = performance.now();
+    const dt = Math.min((time - lastFrameTime) / 1000, 0.1);
+    lastFrameTime = time;
+
+    backgroundElements.forEach(el => {
+        if (el.type === 'grid') {
+            el.mesh.position.z += 0.5;
+            if (el.mesh.position.z > 10) el.mesh.position.z = 0;
+        } else if (el.type === 'stars') {
+            const positions = el.mesh.geometry.attributes.position.array;
+            for(let i=2; i < positions.length; i+=3) {
+                positions[i] += 1.5;
+                if(positions[i] > 50) positions[i] = -150;
+            }
+            el.mesh.geometry.attributes.position.needsUpdate = true;
+        }
+    });
+
+    if (currentState === GAME_STATE.PLAYING) {
+        gameTime += dt;
+        frameCount++;
+
+        player.position.lerp(targetPos, 0.15);
+        const bankDiff = targetPos.x - player.position.x;
+        player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, -bankDiff * 0.1, 0.1);
+        player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, (targetPos.z - player.position.z) * 0.05, 0.1);
+
+        shootBullet();
+
+        if (invulnTimer > 0) {
+            invulnTimer--;
+            player.visible = (Math.floor(invulnTimer / 5) % 2 === 0);
+            if (hasShield && player.shieldMesh) player.shieldMesh.visible = true;
+        } else {
+            if (currentState !== GAME_STATE.GAMEOVER) player.visible = true;
+        }
+
+        // 无敌模式强制显示金身护盾
+        if (currentDifficulty === 3 && player.shieldMesh) {
+            player.shieldMesh.visible = true;
+            player.shieldMesh.material.color.setHex(0xffd700);
+        } else if (player.shieldMesh && !hasShield) {
+            player.shieldMesh.visible = false;
+        } else if (player.shieldMesh && hasShield) {
+            player.shieldMesh.material.color.setHex(0x00ffff);
+        }
+
+        if (player.shieldMesh && player.shieldMesh.visible) {
+            player.shieldMesh.rotation.x += 0.03;
+            player.shieldMesh.rotation.y += 0.05;
+            const pulse = 1 + Math.sin(time / 150) * 0.05;
+            player.shieldMesh.scale.setScalar(pulse);
+        }
+
+        if (player.droneGroup) {
+            player.droneGroup.rotation.y += 0.06;
+            if (player.drone1.visible) player.drone1.rotation.x += 0.1;
+            if (player.drone2.visible) player.drone2.rotation.x -= 0.1;
+        }
+
+        enemySpawnTimer++;
+        
+        let minInterval = 20, scaling = 0.5;
+        if (currentDifficulty === 0) { minInterval = 40; scaling = 0.2; } // 新简单
+        else if (currentDifficulty === 1 || currentDifficulty === 3) { minInterval = 30; scaling = 0.3; } // 普通和无敌
+        else if (currentDifficulty === 2) { minInterval = 15; scaling = 0.6; } // 困难 (放宽以防难以通关)
+
+        const currentInterval = Math.max(minInterval, enemySpawnInterval - gameTime * scaling);
+        
+        if (enemySpawnTimer > currentInterval) {
+            spawnEnemy();
+            
+            if (currentDifficulty === 0) {
+                if (gameTime > 45 && Math.random() < 0.1) spawnEnemy();
+            } else if (currentDifficulty === 1 || currentDifficulty === 3) {
+                if (gameTime > 30 && Math.random() < 0.2) spawnEnemy();
+            } else if (currentDifficulty === 2) {
+                if (gameTime > 15 && Math.random() < 0.2) spawnEnemy(); 
+                if (gameTime > 30 && Math.random() < 0.4) spawnEnemy();
+            }
+
+            enemySpawnTimer = 0;
+        }
+
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            
+            if (!b.isPlayer) {
+                if (b.mesh.position.distanceTo(player.position) < 2.0) {
+                    if (currentDifficulty === 3) {
+                        createExplosion(b.mesh.position, 0xffff00, 5, 0.5);
+                        removeEntity(bullets, i, b);
+                        continue;
+                    }
+                    if (invulnTimer <= 0) {
+                        damagePlayer(b.mesh.position, 1);
+                        removeEntity(bullets, i, b);
+                        continue;
+                    }
+                }
+            }
+            
+            if (b.isPlayer && b.isMissile && enemies.length > 0) {
+                let closest = null; let minDist = Infinity;
+                enemies.forEach(e => {
+                    let d = b.mesh.position.distanceTo(e.mesh.position);
+                    if (d < minDist && b.mesh.position.z > e.mesh.position.z - 5) { minDist = d; closest = e; }
+                });
+                if (closest) {
+                    const dir = new THREE.Vector3().subVectors(closest.mesh.position, b.mesh.position).normalize();
+                    const targetVelocity = dir.multiplyScalar(0.8);
+                    b.velocity.lerp(targetVelocity, 0.08);
+                    b.mesh.lookAt(b.mesh.position.clone().add(b.velocity));
+                }
+
+                if (frameCount % 3 === 0) createTrailParticle(b.mesh.position, 0xff8800);
+            }
+
+            b.mesh.position.add(b.velocity);
+            
+            if (b.mesh.position.z < -60 || b.mesh.position.z > 20 || Math.abs(b.mesh.position.x) > 40) removeEntity(bullets, i, b);
+        }
+
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            const e = enemies[i];
+            e.mesh.position.z += e.speed;
+            
+            if (e.type === 'basic') { e.mesh.rotation.x += 0.02; e.mesh.rotation.y += 0.03; } 
+            else if (e.type === 'fast') { e.mesh.rotation.z += 0.1; } 
+            else if (e.type === 'tank') { e.mesh.rotation.y -= 0.01; } 
+            else if (e.type === 'shooter') {
+                e.mesh.position.x += Math.sin(gameTime * 2 + e.mesh.id) * 0.05;
+                e.mesh.rotation.z = Math.sin(gameTime * 2 + e.mesh.id) * 0.1;
+                if (e.mesh.position.z > -40 && e.mesh.position.z < -10) {
+                    if (gameTime - e.lastShotTime > 1.5) { shootEnemyBullet(e); e.lastShotTime = gameTime; }
+                }
+            }
+
+            if (e.mesh.position.z > 20) { removeEntity(enemies, i, e); continue; }
+
+            if (player.position.distanceTo(e.mesh.position) < (e.size + 1.5)) {
+                if (currentDifficulty === 3) {
+                    score += e.score; updateUI();
+                    createExplosion(e.mesh.position, e.mesh.material ? e.mesh.material.color.getHex() : 0xff00ff, 20, e.size);
+                    if (Math.random() < 0.3) spawnPowerup(e.mesh.position);
+                    removeEntity(enemies, i, e); shakeCamera(0.5); continue;
+                }
+
+                if (invulnTimer > 0) continue;
+                damagePlayer(e.mesh.position, e.size);
+                removeEntity(enemies, i, e); continue;
+            }
+
+            for (let j = bullets.length - 1; j >= 0; j--) {
+                const b = bullets[j];
+                if (!b.isPlayer) continue;
+                if (b.piercing && b.hitEnemies.includes(e)) continue;
+
+                if (b.mesh.position.distanceTo(e.mesh.position) < e.size) {
+                    e.hp -= b.damage;
+                    createExplosion(b.mesh.position, 0xffffff, 3, 0.5);
+                    
+                    if (b.piercing) b.hitEnemies.push(e); else removeEntity(bullets, j, b);
+
+                    const materialsToFlash = e.mesh.isGroup ? e.mesh.children.map(c => c.material) : [e.mesh.material];
+                    const originalStates = materialsToFlash.map(m => { return { mat: m, hasEmissive: m.emissive !== undefined, oldVal: m.emissive ? m.emissive.getHex() : (m.color ? m.color.getHex() : null) }; });
+                    originalStates.forEach(state => { if (state.hasEmissive) state.mat.emissive.setHex(0xffffff); else if (state.mat.color) state.mat.color.setHex(0xffffff); });
+                    setTimeout(() => { if(e.mesh) { originalStates.forEach(state => { if (state.hasEmissive) state.mat.emissive.setHex(state.oldVal); else if (state.mat.color && state.oldVal !== null) state.mat.color.setHex(state.oldVal); }); } }, 50);
+
+                    if (e.hp <= 0) {
+                        score += e.score; updateUI();
+                        createExplosion(e.mesh.position, e.mesh.material ? e.mesh.material.color.getHex() : 0xff00ff, 15, e.size);
+                        
+                        // 提高所有模式的掉落物生成概率
+                        if ((e.type === 'tank' || e.type === 'fast' || e.type === 'shooter') && Math.random() < 0.5) {
+                            spawnPowerup(e.mesh.position);
+                        } else if (Math.random() < 0.1) {
+                            spawnPowerup(e.mesh.position); // 基础敌机掉落率翻倍
+                        }
+
+                        removeEntity(enemies, i, e); break;
+                    }
+                }
+            }
+        }
+
+        for (let i = powerups.length - 1; i >= 0; i--) {
+            const p = powerups[i];
+            p.mesh.position.z += p.speed;
+            
+            if (p.type === 'shield') { p.mesh.rotation.y += 0.05; p.mesh.rotation.x += 0.02; } 
+            else if (p.type === 'laser') { p.mesh.rotation.z += 0.05; p.mesh.rotation.x += 0.02; } 
+            else if (p.type === 'missile') { p.mesh.rotation.y += 0.05; p.mesh.rotation.z = Math.PI / 2; } 
+            else { p.mesh.rotation.y += 0.05; p.mesh.rotation.x += 0.05; }
+
+            if (p.label) {
+                const vector = p.mesh.position.clone(); vector.project(camera);
+                if (vector.z > 1) { p.label.style.opacity = 0; } else {
+                    const x = (vector.x * .5 + .5) * window.innerWidth; const y = (vector.y * -.5 + .5) * window.innerHeight;
+                    p.label.style.left = `${x}px`; p.label.style.top = `${y - 40}px`; p.label.style.opacity = 1;
+                }
+            }
+
+            if (p.mesh.position.z > 20) { removeEntity(powerups, i, p); continue; }
+
+            if (player.position.distanceTo(p.mesh.position) < 3) {
+                AudioSys.powerup(); score += 500;
+                
+                if (p.type === 'shield') {
+                    hasShield = true;
+                    if (player.shieldMesh && currentDifficulty !== 3) player.shieldMesh.visible = true; // God Mode 始终显示
+                } else if (p.type === activeWeapon) {
+                    if (weaponLevel < 5) {
+                        weaponLevel++; showUpgradeText(weaponLevel >= 4 ? "火力全开！僚机部署！" : "武器升级！");
+                        if (player.drone1) player.drone1.visible = (weaponLevel >= 4);
+                        if (player.drone2) player.drone2.visible = (weaponLevel >= 5);
+                    } else if (health < maxHealth) { health++; }
+                } else {
+                    activeWeapon = p.type; weaponLevel = 1; showUpgradeText("武器已切换！");
+                    if (player.drone1) player.drone1.visible = false;
+                    if (player.drone2) player.drone2.visible = false;
+                }
+                
+                updateUI();
+                createExplosion(p.mesh.position, p.mesh.material.color.getHex(), 15, 1);
+                removeEntity(powerups, i, p);
+            }
+        }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.mesh.position.add(p.velocity); p.life -= p.decay;
+        p.mesh.material.opacity = p.life; p.mesh.scale.multiplyScalar(0.95);
+        if (p.life <= 0) removeEntity(particles, i, p);
+    }
+
+    if (shakeIntensity > 0) {
+        camera.position.x = (Math.random() - 0.5) * shakeIntensity; camera.position.y = 40 + (Math.random() - 0.5) * shakeIntensity;
+        shakeIntensity *= 0.9;
+        if (shakeIntensity < 0.1) { shakeIntensity = 0; camera.position.set(0, 40, 20); }
+    }
+
+    renderer.render(scene, camera);
+}
+
+window.onload = init;
+
+</script>
+</body>
+</html>
